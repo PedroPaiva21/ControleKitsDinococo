@@ -8,13 +8,18 @@ module.exports = async (req, res) => {
       const productId = qs.searchParams.get('productId')
       const from = qs.searchParams.get('from')
       const to = qs.searchParams.get('to')
+
       let query = supabase.from('movements').select('*')
       if(productId) query = query.eq('product_id', productId)
-      if(from) query = query.gte('timestamp', from)
-      if(to) query = query.lte('timestamp', to)
-      const { data, error } = await query.order('timestamp', { ascending: false })
+      if(from) query = query.gte('created_at', from)
+      if(to) query = query.lte('created_at', to)
+
+      const { data, error } = await query.order('created_at', { ascending: false })
       if(error) throw error
-      return res.status(200).json(data)
+
+      // map created_at -> timestamp to keep backward compatibility
+      const mapped = (data || []).map(m => ({ ...m, timestamp: m.created_at }))
+      return res.status(200).json(mapped)
     }
 
     if(req.method === 'POST'){
@@ -40,13 +45,16 @@ module.exports = async (req, res) => {
         product_name: prod.name,
         type: delta >= 0 ? 'IN' : 'OUT',
         qty: Math.abs(delta),
-        timestamp: new Date().toISOString(),
+        created_at: new Date().toISOString(),
         cpf_cliente: cpfCliente,
         seller_name: sellerName
       }
       const { data: mv, error: mvErr } = await supabase.from('movements').insert(movement).select().single()
       if(mvErr) throw mvErr
-      return res.status(201).json(mv)
+
+      // return with timestamp field for compatibility
+      const out = { ...mv, timestamp: mv.created_at }
+      return res.status(201).json(out)
     }
 
     res.status(405).send('Method Not Allowed')
